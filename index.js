@@ -15,7 +15,7 @@ app.use(
   })
 );
 
-// Middleware for JWT token verification
+// Middleware for JWT
 const verifyJWT = (req, res, next) => {
   const authentication = req.header("Authorization");
   if (!authentication) {
@@ -33,13 +33,13 @@ const verifyJWT = (req, res, next) => {
 
 // Middleware to verify if the user is an admin
 const verifyAdmin = async (req, res, next) => {
-  const email = req.decoded.email; 
+  const email = req.decoded.email;
   const query = { email: email };
-  const user = await userCollection.findOne(query); 
+  const user = await userCollection.findOne(query);
   if (user?.role !== "admin") {
-    return res.status(403).send({ message: "Forbidden access" }); 
+    return res.status(403).send({ message: "Forbidden access" });
   }
-  next(); 
+  next();
 };
 
 // Middleware to verify if the user is a seller
@@ -57,7 +57,6 @@ app.use(express.json());
 
 // MongoDB connection URI
 const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@cluster0.2lr87.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
-// Create a MongoClient
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -69,7 +68,6 @@ const client = new MongoClient(uri, {
 const userCollection = client.db("bookShop").collection("users");
 const productCollection = client.db("bookShop").collection("products");
 
-// Function to connect to MongoDB and set up routes
 const dbConnect = async () => {
   try {
     //await client.connect();
@@ -77,7 +75,7 @@ const dbConnect = async () => {
 
     // Get user by email
     app.get("/users/:email", async (req, res) => {
-      const query = { email: req.params.email }; // This extracts the email parameter
+      const query = { email: req.params.email };
       const user = await userCollection.findOne(query);
       if (user) {
         res.send(user);
@@ -98,7 +96,6 @@ const dbConnect = async () => {
       res.status(201).send(result);
     });
 
-    // Add product (requires JWT verification)
     app.post("/add-products", verifyJWT, async (req, res) => {
       const product = req.body;
       const result = await productCollection.insertOne(product);
@@ -110,10 +107,10 @@ const dbConnect = async () => {
 
       const query = {};
       if (title) {
-        query.title = { $regex: title, $options: "i" }; // Case-insensitive search for title
+        query.title = { $regex: title, $options: "i" };
       }
       if (category) {
-        query.category = { $regex: category, $options: "i" }; // Case-insensitive search for category
+        query.category = { $regex: category, $options: "i" };
       }
       if (brand) {
         query.brand = brand;
@@ -132,14 +129,11 @@ const dbConnect = async () => {
         .sort({ price: sortOption })
         .toArray();
 
-      // Get total product count for pagination
       const totalProducts = await productCollection.countDocuments(query);
 
-      // Get unique brands and categories
       const categories = [...new Set(products.map((p) => p.category))];
 
-      // Send response
-      res.json({ products,categories, totalProducts });
+      res.json({ products, categories, totalProducts });
     });
 
     //add Wishlist
@@ -151,45 +145,37 @@ const dbConnect = async () => {
         { $addToSet: { wishlist: new ObjectId(String(productId)) } }
       );
 
-      
       res.send(result);
     });
 
-//get data whislist
-app.get("/wishlist/:userId", verifyJWT, async (req, res) => {
+    //get data whislist
+    app.get("/wishlist/:userId", verifyJWT, async (req, res) => {
+      const userId = req.params.userId;
+      const user = await userCollection.findOne({
+        _id: new ObjectId(String(userId)),
+      });
 
-    const userId = req.params.userId;
-    const user = await userCollection.findOne({ 
-      _id: new ObjectId(String(userId)),
+      if (!user) {
+        return res.send({ message: "User not found" });
+      }
+
+      const wishlist = await productCollection
+        .find({ _id: { $in: user.wishlist || [] } })
+        .toArray();
+
+      res.send(wishlist);
     });
 
-    if (!user) {
-      return res.send({ message: "User not found" });
-    }
+    //remove from wishlist
+    app.patch("/wishlist/remove", async (req, res) => {
+      const { userEmail, productId } = req.body;
 
-    const wishlist = await productCollection.find(
-      {_id:{$in: user.wishlist ||[] }}
-    ).toArray()
-
-
-    res.send(wishlist);
-
-
-});
-
-//remove from wishlist
-app.patch("/wishlist/remove", async (req, res) => {
-  const { userEmail, productId } = req.body;
-
-  const result = await userCollection.updateOne(
-    { email: userEmail },
-    { $pull: { wishlist: new ObjectId(String(productId)) } }
-  );
-  res.send(result);
-});
-
-
-
+      const result = await userCollection.updateOne(
+        { email: userEmail },
+        { $pull: { wishlist: new ObjectId(String(productId)) } }
+      );
+      res.send(result);
+    });
   } catch (error) {
     console.log(error.name, error.message);
   }
@@ -206,7 +192,7 @@ app.get("/", (req, res) => {
 app.post("/authentication", async (req, res) => {
   const userEmail = req.body;
   const token = jwt.sign(userEmail, process.env.ACCESS_KEY_TOKEN, {
-    expiresIn: "10d", // Token expiration time
+    expiresIn: "10d",
   });
   res.status(200).send({ token });
 });
